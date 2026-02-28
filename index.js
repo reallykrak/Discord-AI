@@ -1,101 +1,43 @@
-const { 
-    Client, GatewayIntentBits, REST, Routes,
-    ActionRowBuilder, ButtonBuilder, ButtonStyle,
-    EmbedBuilder, SlashCommandBuilder, PermissionFlagsBits
-} = require('discord.js');
-
-const Hercai = require("hercai"); // ✅ DOĞRU IMPORT
-const herc = new Hercai();        // ✅ DOĞRU INIT
-
-const activeChats = new Map();
+const { Client, GatewayIntentBits } = require("discord.js");
+const fetch = require("node-fetch");
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
+  intents:[
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-const TOKEN = "BOT_TOKEN";
-const CLIENT_ID = "CLIENT_ID";
-
-const commands = [
-    new SlashCommandBuilder().setName('yardım').setDescription('Menüyü açar'),
-    new SlashCommandBuilder().setName('ai').setDescription('AI menüsü'),
-    new SlashCommandBuilder().setName('ai-sohbet')
-        .setDescription('AI ile konuş')
-        .addStringOption(o=>o.setName('mesaj').setDescription('mesaj').setRequired(true)),
-    new SlashCommandBuilder().setName('ciz')
-        .setDescription('Resim çizdir')
-        .addStringOption(o=>o.setName('tanim').setDescription('tanım').setRequired(true))
-].map(c=>c.toJSON());
-
-client.once("ready", async ()=>{
-    console.log(client.user.tag+" aktif");
-
-    const rest = new REST({version:"10"}).setToken(TOKEN);
-    await rest.put(Routes.applicationCommands(CLIENT_ID),{body:commands});
+client.on("ready",()=>{
+  console.log("Bot aktif:",client.user.tag);
 });
 
-client.on("interactionCreate", async interaction=>{
+client.on("messageCreate", async msg=>{
 
-if(!interaction.isChatInputCommand()) return;
+if(msg.author.bot) return;
 
-if(interaction.commandName==="yardım"){
-    return interaction.reply("Komutlar:\n/ai\n/ai-sohbet\n/ciz");
-}
+if(!msg.content.startsWith("!ai")) return;
 
-if(interaction.commandName==="ai"){
-    activeChats.set(interaction.user.id,true);
-    return interaction.reply("Sohbet başlatıldı. /ai-sohbet kullan.");
-}
+const soru = msg.content.slice(3);
 
-if(interaction.commandName==="ai-sohbet"){
+if(!soru) return msg.reply("Soru yaz.");
 
-    if(!activeChats.has(interaction.user.id))
-        return interaction.reply({content:"Önce /ai yaz",ephemeral:true});
+msg.channel.sendTyping();
 
-    const mesaj = interaction.options.getString("mesaj");
-    await interaction.deferReply();
+try{
 
-    try{
-        const res = await herc.question({
-            model:"v3",
-            content:mesaj
-        });
+const res = await fetch(`https://api.affiliateplus.xyz/api/chatbot?message=${encodeURIComponent(soru)}&owner=AI&botname=Bot`);
 
-        interaction.editReply(res.reply);
-    }
-    catch(e){
-        console.log(e);
-        interaction.editReply("AI hata verdi");
-    }
-}
+const data = await res.json();
 
-if(interaction.commandName==="ciz"){
+msg.reply(data.message);
 
-    const prompt = interaction.options.getString("tanim");
-    await interaction.deferReply();
-
-    try{
-        const img = await herc.drawImage({
-            model:"v3",
-            prompt:prompt
-        });
-
-        const embed = new EmbedBuilder()
-        .setTitle("Oluşturuldu")
-        .setImage(img.url);
-
-        interaction.editReply({embeds:[embed]});
-    }
-    catch(e){
-        console.log(e);
-        interaction.editReply("Resim oluşturulamadı");
-    }
+}catch(e){
+console.log(e);
+msg.reply("AI cevap veremedi.");
 }
 
 });
 
-client.login(TOKEN);
+client.login("");
