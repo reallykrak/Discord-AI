@@ -3,10 +3,12 @@ const {
     ActionRowBuilder, ButtonBuilder, ButtonStyle, 
     EmbedBuilder, SlashCommandBuilder, PermissionFlagsBits 
 } = require('discord.js');
-const { Hercai } = require('hercai'); // Ücretsiz AI ve Resim API'si
-const herc = new Hercai();
+const { Hercai } = require('hercai'); 
 
-// Kullanıcıların AI sohbet geçmişlerini tutacağımız geçici bellek (Profesyonel botlarda MongoDB kullanılır)
+// HATA BURADAN KAYNAKLANIYORDU, İÇİNE {} EKLENEREK ÇÖZÜLDÜ
+const herc = new Hercai({}); 
+
+// Kullanıcıların AI sohbet geçmişlerini tutacağımız geçici bellek
 const activeChats = new Map();
 
 const client = new Client({ 
@@ -38,7 +40,7 @@ client.once('ready', async () => {
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
         console.log('Komutlar başarıyla yüklendi!');
     } catch (error) {
-        console.error(error);
+        console.error("Komutlar yüklenirken hata oluştu:", error);
     }
 });
 
@@ -56,16 +58,20 @@ client.on('interactionCreate', async interaction => {
 
         // BAN ONAY SISTEMI
         if (action === 'onaylaban') {
-            const targetUser = await interaction.guild.members.fetch(targetId);
-            await targetUser.ban({ reason: "Moderasyon Kararı" });
-            
-            const embed = new EmbedBuilder()
-                .setTitle("🔨 İnfaz Gerçekleşti!")
-                .setDescription(`<@${targetId}> başarıyla sunucudan silindi.`)
-                .setImage("https://cdn.discordapp.com/attachments/964902901451489320/1082342926333522040/thanos-vs-thor-infinity-war_2.gif")
-                .setColor("DarkButNotBlack");
+            try {
+                const targetUser = await interaction.guild.members.fetch(targetId);
+                await targetUser.ban({ reason: "Moderasyon Kararı" });
+                
+                const embed = new EmbedBuilder()
+                    .setTitle("🔨 İnfaz Gerçekleşti!")
+                    .setDescription(`<@${targetId}> başarıyla sunucudan silindi.`)
+                    .setImage("https://cdn.discordapp.com/attachments/964902901451489320/1082342926333522040/thanos-vs-thor-infinity-war_2.gif")
+                    .setColor("DarkButNotBlack");
 
-            await interaction.update({ embeds: [embed], components: [] });
+                await interaction.update({ embeds: [embed], components: [] });
+            } catch (err) {
+                await interaction.update({ content: "❌ Bu kullanıcıyı banlamak için yetkim yok veya benden daha üst bir rolde.", embeds: [], components: [] });
+            }
         } 
         
         if (action === 'iptalban') {
@@ -74,7 +80,7 @@ client.on('interactionCreate', async interaction => {
 
         // YENİ SOHBET BUTONU
         if (action === 'yenisohbet') {
-            activeChats.set(userId, []); // Sohbet geçmişini sıfırla/başlat
+            activeChats.set(userId, true); // Sohbet durumunu aktif et
             await interaction.update({ 
                 content: "✅ **Yeni sohbet başlatıldı!** Artık `/ai-sohbet <mesajınız>` komutuyla benimle konuşabilirsiniz. Link gönderirseniz analiz edebilirim.", 
                 components: [] 
@@ -94,8 +100,8 @@ client.on('interactionCreate', async interaction => {
             .setColor("Blurple")
             .setDescription("Sistem komutları aşağıda listelenmiştir:")
             .addFields(
-                { name: '🤖 AI Komutları', value: '`/ai` - Sohbet başlatır\n`/ai-sohbet` - Mesaj gönderir\n`/ciz` - Görsel oluşturur', inline: false },
-                { name: '⚖️ Moderasyon', value: '`/ban` - Onaylı ban sistemi\n*(Yakında: /kick, /mute)*', inline: false }
+                { name: '🤖 AI Komutları', value: '`/ai` - Sohbet menüsünü açar\n`/ai-sohbet` - AI ile konuşursunuz\n`/ciz` - Görsel oluşturur', inline: false },
+                { name: '⚖️ Moderasyon', value: '`/ban` - Onaylı ban sistemi', inline: false }
             )
             .setFooter({ text: "Gelişmiş Node.js Altyapısı" });
         await interaction.reply({ embeds: [embed] });
@@ -104,14 +110,20 @@ client.on('interactionCreate', async interaction => {
     // ONAYLI BAN SİSTEMİ
     if (commandName === 'ban') {
         if (!interaction.member.permissions.has(PermissionFlagsBits.BanMembers)) {
-            return interaction.reply({ content: "Bu komut için Ban yetkisine sahip olmalısın.", ephemeral: true });
+            return interaction.reply({ content: "Bu komut için 'Üyeleri Yasakla' yetkisine sahip olmalısın.", ephemeral: true });
         }
 
         const hedef = interaction.options.getUser('kullanici');
         
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`onaylaban_${interaction.user.id}_${hedef.id}`).setLabel('Evet, Banla').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`iptalban_${interaction.user.id}_${hedef.id}`).setLabel('Hayır, İptal').setStyle(ButtonStyle.Danger)
+            new ButtonBuilder()
+                .setCustomId(`onaylaban_${interaction.user.id}_${hedef.id}`)
+                .setLabel('Evet, Banla')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId(`iptalban_${interaction.user.id}_${hedef.id}`)
+                .setLabel('Hayır, İptal')
+                .setStyle(ButtonStyle.Danger)
         );
 
         const embed = new EmbedBuilder()
@@ -127,7 +139,10 @@ client.on('interactionCreate', async interaction => {
         const hasChat = activeChats.has(interaction.user.id);
         
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`yenisohbet_${interaction.user.id}_x`).setLabel('Yeni Sohbet Oluştur').setStyle(ButtonStyle.Primary)
+            new ButtonBuilder()
+                .setCustomId(`yenisohbet_${interaction.user.id}_x`)
+                .setLabel('Yeni Sohbet Oluştur')
+                .setStyle(ButtonStyle.Primary)
         );
 
         await interaction.reply({ 
@@ -143,20 +158,19 @@ client.on('interactionCreate', async interaction => {
         }
 
         const mesaj = interaction.options.getString('mesaj');
-        await interaction.deferReply(); // İşlem uzun sürebilir diye bekletiyoruz
+        await interaction.deferReply(); 
 
-        // Basit link analizi uyarısı (Prompt Injection ile)
         let prompt = mesaj;
         if (mesaj.includes("http://") || mesaj.includes("https://")) {
             prompt = `Şu linkteki olası içerik veya genel konu hakkında profesyonel bir analiz yap: ${mesaj}`;
         }
 
         try {
-            // Hercai veya G4F kütüphanesi ile cevap alma (v3 modeli çok hızlıdır)
             const response = await herc.question({ model: "v3", content: prompt });
             await interaction.editReply(`**Sen:** ${mesaj}\n\n**🤖 AI:** ${response.reply}`);
         } catch (error) {
-            await interaction.editReply("Cevap üretilirken bir hata oluştu, sağlayıcılar yoğun olabilir.");
+            console.error("Yapay zeka hatası:", error);
+            await interaction.editReply("Cevap üretilirken bir hata oluştu, sağlayıcılar şu an yoğun olabilir.");
         }
     }
 
@@ -175,9 +189,11 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed] });
         } catch (error) {
+            console.error("Resim çizim hatası:", error);
             await interaction.editReply("Resim çizilirken bir sorun oluştu.");
         }
     }
 });
 
 client.login(TOKEN);
+                
